@@ -4,37 +4,59 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Loader2, Network, Activity } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 type PortStatus = "checking" | "open" | "closed" | "idle";
 
 interface CheckResult {
   host: string;
   port: string;
+  brand: string;
   status: PortStatus;
   timestamp: Date;
+  time_ms?: number;
 }
 
+// EastGate brands configuration
+const BRANDS: Record<string, { host: string; default_port: number }> = {
+  "Bareeze": { host: "barz.eastgateindustries.com", default_port: 20000 },
+  "Bareeze Men": { host: "bman.eastgateindustries.com", default_port: 20000 },
+  "Chineyere": { host: "chny.eastgateindustries.com", default_port: 20000 },
+  "Mini Minor": { host: "mmnr.eastgateindustries.com", default_port: 20000 },
+  "Rangja": { host: "rnja.eastgateindustries.com", default_port: 20000 },
+  "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000 },
+};
+
 export const PortChecker = () => {
-  const [host, setHost] = useState("");
-  const [port, setPort] = useState("");
+  const [selectedBrand, setSelectedBrand] = useState<string>(Object.keys(BRANDS)[0]);
+  const [port, setPort] = useState(BRANDS[Object.keys(BRANDS)[0]].default_port.toString());
   const [status, setStatus] = useState<PortStatus>("idle");
   const [history, setHistory] = useState<CheckResult[]>([]);
 
-  // Simulated port checking function
-  const checkPort = async (hostname: string, portNumber: string) => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Common ports that are typically "open" for demo purposes
-    const commonOpenPorts = ["80", "443", "8080", "3000", "5000", "8000"];
-    const isOpen = commonOpenPorts.includes(portNumber) || Math.random() > 0.5;
-    
-    return isOpen ? "open" : "closed";
+  // Real port checking function using backend
+  const checkPort = async (brand: string, portNumber: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('check-port', {
+        body: { brand, port: parseInt(portNumber), timeout: 3 }
+      });
+
+      if (error) throw error;
+      
+      return data.open ? "open" : "closed";
+    } catch (error) {
+      console.error("Port check error:", error);
+      throw error;
+    }
   };
+
+  // Update port when brand changes
+  useEffect(() => {
+    setPort(BRANDS[selectedBrand].default_port.toString());
+  }, [selectedBrand]);
 
   // Debounced auto-check effect
   useEffect(() => {
-    if (!host || !port) {
+    if (!selectedBrand || !port) {
       setStatus("idle");
       return;
     }
@@ -43,12 +65,13 @@ export const PortChecker = () => {
       setStatus("checking");
       
       try {
-        const result = await checkPort(host, port);
+        const result = await checkPort(selectedBrand, port);
         setStatus(result as PortStatus);
         
         const checkResult: CheckResult = {
-          host,
+          host: BRANDS[selectedBrand].host,
           port,
+          brand: selectedBrand,
           status: result as PortStatus,
           timestamp: new Date(),
         };
@@ -56,9 +79,9 @@ export const PortChecker = () => {
         setHistory(prev => [checkResult, ...prev.slice(0, 9)]);
         
         if (result === "open") {
-          toast.success(`Port ${port} is OPEN on ${host}`);
+          toast.success(`Port ${port} is OPEN on ${selectedBrand}`);
         } else {
-          toast.error(`Port ${port} is CLOSED on ${host}`);
+          toast.error(`Port ${port} is CLOSED on ${selectedBrand}`);
         }
       } catch (error) {
         setStatus("closed");
@@ -67,7 +90,7 @@ export const PortChecker = () => {
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [host, port]);
+  }, [selectedBrand, port]);
 
   const getStatusColor = (s: PortStatus) => {
     switch (s) {
@@ -125,23 +148,28 @@ export const PortChecker = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">
-                  Host / IP Address
+                  EastGate Brand
                 </label>
-                <Input
-                  type="text"
-                  placeholder="e.g., google.com or 192.168.1.1"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="bg-input/50 border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)]"
-                />
+                <select
+                  value={selectedBrand}
+                  onChange={(e) => setSelectedBrand(e.target.value)}
+                  className="w-full h-10 px-3 rounded-md bg-input/50 border border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)] text-foreground"
+                >
+                  {Object.keys(BRANDS).map((brand) => (
+                    <option key={brand} value={brand}>
+                      {brand}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">
                   Port Number
                 </label>
                 <Input
-                  type="text"
-                  placeholder="e.g., 80, 443, 8080"
+                  type="number"
+                  min="1"
+                  max="65535"
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
                   className="bg-input/50 border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)]"
@@ -165,15 +193,15 @@ export const PortChecker = () => {
                   
                   <div className="text-center">
                     <h3 className="text-2xl font-bold mb-2">
-                      {status === "idle" && "Enter host and port to check"}
+                      {status === "idle" && "Select brand to check port"}
                       {status === "checking" && "Scanning port..."}
                       {status === "open" && "Port is OPEN"}
                       {status === "closed" && "Port is CLOSED"}
                     </h3>
                     
-                    {status !== "idle" && host && port && (
+                    {status !== "idle" && selectedBrand && port && (
                       <p className="text-muted-foreground">
-                        {host}:{port}
+                        {selectedBrand} - {BRANDS[selectedBrand].host}:{port}
                       </p>
                     )}
                   </div>
@@ -215,10 +243,11 @@ export const PortChecker = () => {
                       )}
                       <div>
                         <p className="font-medium text-foreground">
-                          {result.host}:{result.port}
+                          {result.brand} - {result.host}:{result.port}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {result.timestamp.toLocaleTimeString()}
+                          {result.time_ms && ` • ${result.time_ms}ms`}
                         </p>
                       </div>
                     </div>

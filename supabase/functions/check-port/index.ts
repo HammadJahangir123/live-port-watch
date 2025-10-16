@@ -1,0 +1,123 @@
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// EastGate brands configuration
+const BRANDS: Record<string, { host: string; default_port: number }> = {
+  "Bareeze": { host: "barz.eastgateindustries.com", default_port: 20000 },
+  "Bareeze Men": { host: "bman.eastgateindustries.com", default_port: 20000 },
+  "Chineyere": { host: "chny.eastgateindustries.com", default_port: 20000 },
+  "Mini Minor": { host: "mmnr.eastgateindustries.com", default_port: 20000 },
+  "Rangja": { host: "rnja.eastgateindustries.com", default_port: 20000 },
+  "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000 },
+};
+
+async function checkPortConnection(
+  hostname: string,
+  port: number,
+  timeout: number = 3000
+): Promise<{ open: boolean; time_ms: number; message: string }> {
+  const startTime = performance.now();
+  
+  try {
+    // Use Deno.connect to attempt TCP connection
+    const conn = await Promise.race([
+      Deno.connect({ hostname, port }),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout')), timeout)
+      ),
+    ]);
+    
+    conn.close();
+    const elapsed = performance.now() - startTime;
+    
+    return {
+      open: true,
+      time_ms: Math.round(elapsed),
+      message: 'Successfully connected',
+    };
+  } catch (error: any) {
+    const elapsed = performance.now() - startTime;
+    
+    if (error.message === 'Connection timeout') {
+      return {
+        open: false,
+        time_ms: Math.round(elapsed),
+        message: 'Connection timed out',
+      };
+    }
+    
+    return {
+      open: false,
+      time_ms: Math.round(elapsed),
+      message: `Connection error: ${error.message}`,
+    };
+  }
+}
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { brand, port, timeout = 3 } = await req.json();
+
+    // Validate brand
+    if (!brand || !BRANDS[brand]) {
+      return new Response(
+        JSON.stringify({ error: 'Unknown or missing brand' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const host = BRANDS[brand].host;
+
+    // Validate port
+    if (!port || port < 1 || port > 65535) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid port number' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Validate timeout
+    const timeoutMs = Math.min(Math.max(timeout * 1000, 1000), 30000);
+
+    console.log(`Checking port: ${host}:${port} (timeout: ${timeoutMs}ms)`);
+
+    // Perform the actual port check
+    const result = await checkPortConnection(host, port, timeoutMs);
+
+    return new Response(
+      JSON.stringify({
+        open: result.open,
+        host,
+        port,
+        time_ms: result.time_ms,
+        message: result.message,
+        brand,
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  } catch (error: any) {
+    console.error('Error in check-port function:', error);
+    return new Response(
+      JSON.stringify({ error: error.message || 'Internal server error' }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+});
