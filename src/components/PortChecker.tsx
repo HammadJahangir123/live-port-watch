@@ -18,34 +18,40 @@ interface CheckResult {
 }
 
 // EastGate brands configuration
-const BRANDS: Record<string, { host: string; default_port: number }> = {
-  "Bareeze": { host: "barz.eastgateindustries.com", default_port: 20000 },
-  "Bareeze Men": { host: "bman.eastgateindustries.com", default_port: 20000 },
-  "Chineyere": { host: "chny.eastgateindustries.com", default_port: 20000 },
-  "Mini Minor": { host: "mmnr.eastgateindustries.com", default_port: 20000 },
-  "Rangja": { host: "rnja.eastgateindustries.com", default_port: 20000 },
-  "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000 },
+const BRANDS: Record<string, { host: string; default_port: number; brain_net_ip: string; live_ip: string }> = {
+  "Bareeze": { host: "barz.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.25", live_ip: "202.59.94.86" },
+  "Bareeze Men": { host: "bman.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.26", live_ip: "202.59.94.92" },
+  "Chineyere": { host: "chny.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.28", live_ip: "202.59.94.88" },
+  "Mini Minor": { host: "mmnr.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.29", live_ip: "202.59.94.87" },
+  "Rangja": { host: "rnja.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.30", live_ip: "202.59.94.91" },
+  "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.32", live_ip: "202.59.94.93" },
 };
-
-// IP addresses for selection
-const IP_OPTIONS = [
-  { label: "Default (Brand Host)", value: "" },
-  { label: "192.168.1.122", value: "192.168.1.122" },
-  { label: "192.168.1.200", value: "192.168.1.200" },
-];
 
 export const PortChecker = () => {
   const [selectedBrand, setSelectedBrand] = useState<string>(Object.keys(BRANDS)[0]);
-  const [selectedIp, setSelectedIp] = useState<string>("");
+  const [selectedIp, setSelectedIp] = useState<string>("default");
   const [port, setPort] = useState(BRANDS[Object.keys(BRANDS)[0]].default_port.toString());
   const [status, setStatus] = useState<PortStatus>("idle");
   const [history, setHistory] = useState<CheckResult[]>([]);
 
+  // Get IP options for selected brand
+  const getIpOptions = (brand: string) => {
+    const brandConfig = BRANDS[brand];
+    return [
+      { label: "Default (Domain)", value: "default" },
+      { label: `Brain Net IP (${brandConfig.brain_net_ip})`, value: brandConfig.brain_net_ip },
+      { label: `Live IP (${brandConfig.live_ip})`, value: brandConfig.live_ip },
+    ];
+  };
+
   // Real port checking function using backend
-  const checkPort = async (brand: string, portNumber: string, ip?: string) => {
+  const checkPort = async (brand: string, portNumber: string, ipSelection: string) => {
     try {
+      // Determine the actual IP to use
+      const actualIp = ipSelection === "default" ? undefined : ipSelection;
+      
       const { data, error } = await supabase.functions.invoke('check-port', {
-        body: { brand, port: parseInt(portNumber), timeout: 3, ip: ip || undefined }
+        body: { brand, port: parseInt(portNumber), timeout: 3, ip: actualIp }
       });
 
       if (error) throw error;
@@ -57,9 +63,10 @@ export const PortChecker = () => {
     }
   };
 
-  // Update port when brand changes
+  // Update port and reset IP when brand changes
   useEffect(() => {
     setPort(BRANDS[selectedBrand].default_port.toString());
+    setSelectedIp("default");
   }, [selectedBrand]);
 
   // Debounced auto-check effect
@@ -76,7 +83,14 @@ export const PortChecker = () => {
         const result = await checkPort(selectedBrand, port, selectedIp);
         setStatus(result as PortStatus);
         
-        const displayHost = selectedIp || BRANDS[selectedBrand].host;
+        // Determine display host based on selection
+        let displayHost: string;
+        if (selectedIp === "default") {
+          displayHost = BRANDS[selectedBrand].host;
+        } else {
+          displayHost = selectedIp;
+        }
+        
         const checkResult: CheckResult = {
           host: displayHost,
           port,
@@ -180,7 +194,7 @@ export const PortChecker = () => {
                   onChange={(e) => setSelectedIp(e.target.value)}
                   className="w-full h-10 px-3 rounded-md bg-input/50 border border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)] text-foreground"
                 >
-                  {IP_OPTIONS.map((ip) => (
+                  {getIpOptions(selectedBrand).map((ip) => (
                     <option key={ip.value} value={ip.value}>
                       {ip.label}
                     </option>
@@ -226,7 +240,7 @@ export const PortChecker = () => {
                     
                     {status !== "idle" && selectedBrand && port && (
                       <p className="text-muted-foreground">
-                        {selectedBrand} - {selectedIp || BRANDS[selectedBrand].host}:{port}
+                        {selectedBrand} - {selectedIp === "default" ? BRANDS[selectedBrand].host : selectedIp}:{port}
                       </p>
                     )}
                   </div>

@@ -4,13 +4,13 @@ const corsHeaders = {
 };
 
 // EastGate brands configuration
-const BRANDS: Record<string, { host: string; default_port: number }> = {
-  "Bareeze": { host: "barz.eastgateindustries.com", default_port: 20000 },
-  "Bareeze Men": { host: "bman.eastgateindustries.com", default_port: 20000 },
-  "Chineyere": { host: "chny.eastgateindustries.com", default_port: 20000 },
-  "Mini Minor": { host: "mmnr.eastgateindustries.com", default_port: 20000 },
-  "Rangja": { host: "rnja.eastgateindustries.com", default_port: 20000 },
-  "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000 },
+const BRANDS: Record<string, { host: string; default_port: number; brain_net_ip: string; live_ip: string }> = {
+  "Bareeze": { host: "barz.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.25", live_ip: "202.59.94.86" },
+  "Bareeze Men": { host: "bman.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.26", live_ip: "202.59.94.92" },
+  "Chineyere": { host: "chny.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.28", live_ip: "202.59.94.88" },
+  "Mini Minor": { host: "mmnr.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.29", live_ip: "202.59.94.87" },
+  "Rangja": { host: "rnja.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.30", live_ip: "202.59.94.91" },
+  "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.32", live_ip: "202.59.94.93" },
 };
 
 async function checkPortConnection(
