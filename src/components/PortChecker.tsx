@@ -27,17 +27,25 @@ const BRANDS: Record<string, { host: string; default_port: number }> = {
   "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000 },
 };
 
+// IP addresses for selection
+const IP_OPTIONS = [
+  { label: "Default (Brand Host)", value: "" },
+  { label: "192.168.1.122", value: "192.168.1.122" },
+  { label: "192.168.1.200", value: "192.168.1.200" },
+];
+
 export const PortChecker = () => {
   const [selectedBrand, setSelectedBrand] = useState<string>(Object.keys(BRANDS)[0]);
+  const [selectedIp, setSelectedIp] = useState<string>("");
   const [port, setPort] = useState(BRANDS[Object.keys(BRANDS)[0]].default_port.toString());
   const [status, setStatus] = useState<PortStatus>("idle");
   const [history, setHistory] = useState<CheckResult[]>([]);
 
   // Real port checking function using backend
-  const checkPort = async (brand: string, portNumber: string) => {
+  const checkPort = async (brand: string, portNumber: string, ip?: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('check-port', {
-        body: { brand, port: parseInt(portNumber), timeout: 3 }
+        body: { brand, port: parseInt(portNumber), timeout: 3, ip: ip || undefined }
       });
 
       if (error) throw error;
@@ -65,11 +73,12 @@ export const PortChecker = () => {
       setStatus("checking");
       
       try {
-        const result = await checkPort(selectedBrand, port);
+        const result = await checkPort(selectedBrand, port, selectedIp);
         setStatus(result as PortStatus);
         
+        const displayHost = selectedIp || BRANDS[selectedBrand].host;
         const checkResult: CheckResult = {
-          host: BRANDS[selectedBrand].host,
+          host: displayHost,
           port,
           brand: selectedBrand,
           status: result as PortStatus,
@@ -79,9 +88,9 @@ export const PortChecker = () => {
         setHistory(prev => [checkResult, ...prev.slice(0, 9)]);
         
         if (result === "open") {
-          toast.success(`Port ${port} is OPEN on ${selectedBrand}`);
+          toast.success(`Port ${port} is OPEN on ${displayHost}`);
         } else {
-          toast.error(`Port ${port} is CLOSED on ${selectedBrand}`);
+          toast.error(`Port ${port} is CLOSED on ${displayHost}`);
         }
       } catch (error) {
         setStatus("closed");
@@ -90,7 +99,7 @@ export const PortChecker = () => {
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [selectedBrand, port]);
+  }, [selectedBrand, port, selectedIp]);
 
   const getStatusColor = (s: PortStatus) => {
     switch (s) {
@@ -145,7 +154,7 @@ export const PortChecker = () => {
         <Card className="max-w-2xl mx-auto p-8 bg-card/50 backdrop-blur-xl border-2 border-border shadow-2xl mb-8 animate-scale-in">
           <div className="space-y-6">
             {/* Input Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">
                   EastGate Brand
@@ -158,6 +167,22 @@ export const PortChecker = () => {
                   {Object.keys(BRANDS).map((brand) => (
                     <option key={brand} value={brand}>
                       {brand}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  IP Address
+                </label>
+                <select
+                  value={selectedIp}
+                  onChange={(e) => setSelectedIp(e.target.value)}
+                  className="w-full h-10 px-3 rounded-md bg-input/50 border border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)] text-foreground"
+                >
+                  {IP_OPTIONS.map((ip) => (
+                    <option key={ip.value} value={ip.value}>
+                      {ip.label}
                     </option>
                   ))}
                 </select>
@@ -201,7 +226,7 @@ export const PortChecker = () => {
                     
                     {status !== "idle" && selectedBrand && port && (
                       <p className="text-muted-foreground">
-                        {selectedBrand} - {BRANDS[selectedBrand].host}:{port}
+                        {selectedBrand} - {selectedIp || BRANDS[selectedBrand].host}:{port}
                       </p>
                     )}
                   </div>

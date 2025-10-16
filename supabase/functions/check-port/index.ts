@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { brand, port, timeout = 3 } = await req.json();
+    const { brand, port, timeout = 3, ip } = await req.json();
 
     // Validate brand
     if (!brand || !BRANDS[brand]) {
@@ -76,7 +76,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const host = BRANDS[brand].host;
+    // Use provided IP or fall back to brand host
+    const host = ip || BRANDS[brand].host;
 
     // Validate port
     if (!port || port < 1 || port > 65535) {
