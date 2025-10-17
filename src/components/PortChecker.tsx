@@ -29,29 +29,52 @@ const BRANDS: Record<string, { host: string; default_port: number; brain_net_ip:
 
 export const PortChecker = () => {
   const [selectedBrand, setSelectedBrand] = useState<string>(Object.keys(BRANDS)[0]);
-  const [selectedIp, setSelectedIp] = useState<string>("default");
+  const [selectedIp, setSelectedIp] = useState<string>(BRANDS[Object.keys(BRANDS)[0]].brain_net_ip);
   const [port, setPort] = useState(BRANDS[Object.keys(BRANDS)[0]].default_port.toString());
   const [status, setStatus] = useState<PortStatus>("idle");
   const [history, setHistory] = useState<CheckResult[]>([]);
+  const [whatsappNumber, setWhatsappNumber] = useState<string>("");
 
   // Get IP options for selected brand
   const getIpOptions = (brand: string) => {
     const brandConfig = BRANDS[brand];
     return [
-      { label: "Default (Domain)", value: "default" },
-      { label: `Brain Net IP (${brandConfig.brain_net_ip})`, value: brandConfig.brain_net_ip },
-      { label: `Live IP (${brandConfig.live_ip})`, value: brandConfig.live_ip },
+      { label: `Brain Net IP (${brandConfig.brain_net_ip})`, value: brandConfig.brain_net_ip, type: "Brain Net IP" },
+      { label: `Live IP (${brandConfig.live_ip})`, value: brandConfig.live_ip, type: "Live IP" },
     ];
+  };
+
+  // Get IP type label
+  const getIpType = (brand: string, ip: string) => {
+    const brandConfig = BRANDS[brand];
+    if (ip === brandConfig.brain_net_ip) return "Brain Net IP";
+    if (ip === brandConfig.live_ip) return "Live IP";
+    return "";
+  };
+
+  // Send WhatsApp notification
+  const sendWhatsAppNotification = async (brand: string, host: string, port: string) => {
+    if (!whatsappNumber) return;
+    
+    try {
+      await supabase.functions.invoke('send-whatsapp-alert', {
+        body: { 
+          phoneNumber: whatsappNumber,
+          brand,
+          host,
+          port
+        }
+      });
+    } catch (error) {
+      console.error("WhatsApp notification error:", error);
+    }
   };
 
   // Real port checking function using backend
   const checkPort = async (brand: string, portNumber: string, ipSelection: string) => {
     try {
-      // Determine the actual IP to use
-      const actualIp = ipSelection === "default" ? undefined : ipSelection;
-      
       const { data, error } = await supabase.functions.invoke('check-port', {
-        body: { brand, port: parseInt(portNumber), timeout: 3, ip: actualIp }
+        body: { brand, port: parseInt(portNumber), timeout: 3, ip: ipSelection }
       });
 
       if (error) throw error;
@@ -66,7 +89,7 @@ export const PortChecker = () => {
   // Update port and reset IP when brand changes
   useEffect(() => {
     setPort(BRANDS[selectedBrand].default_port.toString());
-    setSelectedIp("default");
+    setSelectedIp(BRANDS[selectedBrand].brain_net_ip);
   }, [selectedBrand]);
 
   // Debounced auto-check effect
@@ -83,13 +106,8 @@ export const PortChecker = () => {
         const result = await checkPort(selectedBrand, port, selectedIp);
         setStatus(result as PortStatus);
         
-        // Determine display host based on selection
-        let displayHost: string;
-        if (selectedIp === "default") {
-          displayHost = BRANDS[selectedBrand].host;
-        } else {
-          displayHost = selectedIp;
-        }
+        const ipType = getIpType(selectedBrand, selectedIp);
+        const displayHost = selectedIp;
         
         const checkResult: CheckResult = {
           host: displayHost,
@@ -102,9 +120,11 @@ export const PortChecker = () => {
         setHistory(prev => [checkResult, ...prev.slice(0, 9)]);
         
         if (result === "open") {
-          toast.success(`Port ${port} is OPEN on ${displayHost}`);
+          toast.success(`Port ${port} is OPEN on ${displayHost} (${ipType})`);
         } else {
-          toast.error(`Port ${port} is CLOSED on ${displayHost}`);
+          toast.error(`Port ${port} is CLOSED on ${displayHost} (${ipType})`);
+          // Send WhatsApp notification when port is closed
+          await sendWhatsAppNotification(selectedBrand, displayHost, port);
         }
       } catch (error) {
         setStatus("closed");
@@ -168,7 +188,7 @@ export const PortChecker = () => {
         <Card className="max-w-2xl mx-auto p-8 bg-card/50 backdrop-blur-xl border-2 border-border shadow-2xl mb-8 animate-scale-in">
           <div className="space-y-6">
             {/* Input Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">
                   EastGate Brand
@@ -214,6 +234,18 @@ export const PortChecker = () => {
                   className="bg-input/50 border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)]"
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  WhatsApp Number
+                </label>
+                <Input
+                  type="tel"
+                  placeholder="+923001234567"
+                  value={whatsappNumber}
+                  onChange={(e) => setWhatsappNumber(e.target.value)}
+                  className="bg-input/50 border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)]"
+                />
+              </div>
             </div>
 
             {/* Status Display */}
@@ -240,7 +272,7 @@ export const PortChecker = () => {
                     
                     {status !== "idle" && selectedBrand && port && (
                       <p className="text-muted-foreground">
-                        {selectedBrand} - {selectedIp === "default" ? BRANDS[selectedBrand].host : selectedIp}:{port}
+                        {selectedBrand} - {selectedIp}:{port} ({getIpType(selectedBrand, selectedIp)})
                       </p>
                     )}
                   </div>
