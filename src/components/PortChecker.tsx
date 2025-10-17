@@ -38,6 +38,29 @@ export const PortChecker = () => {
   );
   const [whatsappNumber, setWhatsappNumber] = useState<string>("");
 
+  // Play alarm sound when port is closed
+  const playAlarmSound = () => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Create an alarm-like sound with rapid frequency changes
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.2);
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.4);
+    oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.6);
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.8);
+  };
+
   // Send WhatsApp notification
   const sendWhatsAppNotification = async (brand: string, host: string, ipType: string) => {
     if (!whatsappNumber) return;
@@ -105,11 +128,13 @@ export const PortChecker = () => {
 
       // Send notifications and toasts for closed ports
       if (brainNetResult === "closed") {
+        playAlarmSound();
         toast.error(`${brand} - Brain Net IP port is CLOSED`);
         await sendWhatsAppNotification(brand, brandConfig.brain_net_ip, "Brain Net IP");
       }
       
       if (liveIpResult === "closed") {
+        playAlarmSound();
         toast.error(`${brand} - Live IP port is CLOSED`);
         await sendWhatsAppNotification(brand, brandConfig.live_ip, "Live IP");
       }
