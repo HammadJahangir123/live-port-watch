@@ -2,19 +2,18 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Loader2, Network, Activity } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 type PortStatus = "checking" | "open" | "closed" | "idle";
 
-interface CheckResult {
-  host: string;
-  port: string;
+interface BrandStatus {
   brand: string;
-  status: PortStatus;
-  timestamp: Date;
-  time_ms?: number;
+  brainNetIp: string;
+  liveIp: string;
+  brainNetStatus: PortStatus;
+  liveIpStatus: PortStatus;
 }
 
 // EastGate brands configuration
@@ -28,32 +27,19 @@ const BRANDS: Record<string, { host: string; default_port: number; brain_net_ip:
 };
 
 export const PortChecker = () => {
-  const [selectedBrand, setSelectedBrand] = useState<string>(Object.keys(BRANDS)[0]);
-  const [selectedIp, setSelectedIp] = useState<string>(BRANDS[Object.keys(BRANDS)[0]].brain_net_ip);
-  const [port, setPort] = useState(BRANDS[Object.keys(BRANDS)[0]].default_port.toString());
-  const [status, setStatus] = useState<PortStatus>("idle");
-  const [history, setHistory] = useState<CheckResult[]>([]);
+  const [brandStatuses, setBrandStatuses] = useState<BrandStatus[]>(
+    Object.keys(BRANDS).map(brand => ({
+      brand,
+      brainNetIp: BRANDS[brand].brain_net_ip,
+      liveIp: BRANDS[brand].live_ip,
+      brainNetStatus: "idle" as PortStatus,
+      liveIpStatus: "idle" as PortStatus,
+    }))
+  );
   const [whatsappNumber, setWhatsappNumber] = useState<string>("");
 
-  // Get IP options for selected brand
-  const getIpOptions = (brand: string) => {
-    const brandConfig = BRANDS[brand];
-    return [
-      { label: `Brain Net IP (${brandConfig.brain_net_ip})`, value: brandConfig.brain_net_ip, type: "Brain Net IP" },
-      { label: `Live IP (${brandConfig.live_ip})`, value: brandConfig.live_ip, type: "Live IP" },
-    ];
-  };
-
-  // Get IP type label
-  const getIpType = (brand: string, ip: string) => {
-    const brandConfig = BRANDS[brand];
-    if (ip === brandConfig.brain_net_ip) return "Brain Net IP";
-    if (ip === brandConfig.live_ip) return "Live IP";
-    return "";
-  };
-
   // Send WhatsApp notification
-  const sendWhatsAppNotification = async (brand: string, host: string, port: string) => {
+  const sendWhatsAppNotification = async (brand: string, host: string, ipType: string) => {
     if (!whatsappNumber) return;
     
     try {
@@ -62,7 +48,7 @@ export const PortChecker = () => {
           phoneNumber: whatsappNumber,
           brand,
           host,
-          port
+          port: "20000"
         }
       });
     } catch (error) {
@@ -71,10 +57,10 @@ export const PortChecker = () => {
   };
 
   // Real port checking function using backend
-  const checkPort = async (brand: string, portNumber: string, ipSelection: string) => {
+  const checkPort = async (brand: string, ip: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('check-port', {
-        body: { brand, port: parseInt(portNumber), timeout: 3, ip: ipSelection }
+        body: { brand, port: 20000, timeout: 3, ip }
       });
 
       if (error) throw error;
@@ -82,82 +68,75 @@ export const PortChecker = () => {
       return data.open ? "open" : "closed";
     } catch (error) {
       console.error("Port check error:", error);
-      throw error;
+      return "closed";
     }
   };
 
-  // Update port and reset IP when brand changes
-  useEffect(() => {
-    setPort(BRANDS[selectedBrand].default_port.toString());
-    setSelectedIp(BRANDS[selectedBrand].brain_net_ip);
-  }, [selectedBrand]);
-
-  // Debounced auto-check effect
-  useEffect(() => {
-    if (!selectedBrand || !port) {
-      setStatus("idle");
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setStatus("checking");
+  // Check all brands and both IPs
+  const checkAllPorts = async () => {
+    const brandKeys = Object.keys(BRANDS);
+    
+    for (const brand of brandKeys) {
+      const brandConfig = BRANDS[brand];
       
-      try {
-        const result = await checkPort(selectedBrand, port, selectedIp);
-        setStatus(result as PortStatus);
-        
-        const ipType = getIpType(selectedBrand, selectedIp);
-        const displayHost = selectedIp;
-        
-        const checkResult: CheckResult = {
-          host: displayHost,
-          port,
-          brand: selectedBrand,
-          status: result as PortStatus,
-          timestamp: new Date(),
-        };
-        
-        setHistory(prev => [checkResult, ...prev.slice(0, 9)]);
-        
-        if (result === "open") {
-          toast.success(`Port ${port} is OPEN on ${displayHost} (${ipType})`);
-        } else {
-          toast.error(`Port ${port} is CLOSED on ${displayHost} (${ipType})`);
-          // Send WhatsApp notification when port is closed
-          await sendWhatsAppNotification(selectedBrand, displayHost, port);
-        }
-      } catch (error) {
-        setStatus("closed");
-        toast.error("Failed to check port");
+      // Update status to checking
+      setBrandStatuses(prev => prev.map(b => 
+        b.brand === brand 
+          ? { ...b, brainNetStatus: "checking", liveIpStatus: "checking" }
+          : b
+      ));
+
+      // Check Brain Net IP
+      const brainNetResult = await checkPort(brand, brandConfig.brain_net_ip);
+      
+      // Check Live IP
+      const liveIpResult = await checkPort(brand, brandConfig.live_ip);
+
+      // Update statuses
+      setBrandStatuses(prev => prev.map(b => 
+        b.brand === brand 
+          ? { 
+              ...b, 
+              brainNetStatus: brainNetResult as PortStatus, 
+              liveIpStatus: liveIpResult as PortStatus 
+            }
+          : b
+      ));
+
+      // Send notifications and toasts for closed ports
+      if (brainNetResult === "closed") {
+        toast.error(`${brand} - Brain Net IP port is CLOSED`);
+        await sendWhatsAppNotification(brand, brandConfig.brain_net_ip, "Brain Net IP");
       }
-    }, 800);
-
-    return () => clearTimeout(timer);
-  }, [selectedBrand, port, selectedIp]);
-
-  const getStatusColor = (s: PortStatus) => {
-    switch (s) {
-      case "open":
-        return "success";
-      case "closed":
-        return "destructive";
-      case "checking":
-        return "secondary";
-      default:
-        return "muted";
+      
+      if (liveIpResult === "closed") {
+        toast.error(`${brand} - Live IP port is CLOSED`);
+        await sendWhatsAppNotification(brand, brandConfig.live_ip, "Live IP");
+      }
     }
   };
+
+  // Auto-check on mount and every 30 seconds
+  useEffect(() => {
+    checkAllPorts();
+    
+    const interval = setInterval(() => {
+      checkAllPorts();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [whatsappNumber]);
 
   const getStatusIcon = (s: PortStatus) => {
     switch (s) {
       case "open":
-        return <CheckCircle2 className="h-8 w-8 text-success animate-pulse" />;
+        return <CheckCircle2 className="h-5 w-5 text-success" />;
       case "closed":
-        return <XCircle className="h-8 w-8 text-destructive animate-pulse" />;
+        return <XCircle className="h-5 w-5 text-destructive" />;
       case "checking":
-        return <Loader2 className="h-8 w-8 text-primary animate-spin" />;
+        return <Loader2 className="h-5 w-5 text-primary animate-spin" />;
       default:
-        return <Network className="h-8 w-8 text-muted-foreground" />;
+        return null;
     }
   };
 
@@ -172,168 +151,97 @@ export const PortChecker = () => {
 
       <div className="relative z-10 container mx-auto px-4 py-12">
         {/* Header */}
-        <div className="text-center mb-12 animate-fade-in">
+        <div className="text-center mb-8 animate-fade-in">
           <div className="inline-flex items-center gap-2 mb-4">
             <Activity className="h-8 w-8 text-primary animate-pulse-glow" />
             <h1 className="text-5xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-              Port Checker
+              Port Status Monitor
             </h1>
           </div>
           <p className="text-muted-foreground text-lg">
-            Real-time port status monitoring • Auto-refresh enabled
+            Real-time port monitoring for all brands • Auto-refresh every 30 seconds
           </p>
         </div>
 
-        {/* Main Checker Card */}
-        <Card className="max-w-2xl mx-auto p-8 bg-card/50 backdrop-blur-xl border-2 border-border shadow-2xl mb-8 animate-scale-in">
-          <div className="space-y-6">
-            {/* Input Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  EastGate Brand
-                </label>
-                <select
-                  value={selectedBrand}
-                  onChange={(e) => setSelectedBrand(e.target.value)}
-                  className="w-full h-10 px-3 rounded-md bg-input/50 border border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)] text-foreground"
-                >
-                  {Object.keys(BRANDS).map((brand) => (
-                    <option key={brand} value={brand}>
-                      {brand}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  IP Address
-                </label>
-                <select
-                  value={selectedIp}
-                  onChange={(e) => setSelectedIp(e.target.value)}
-                  className="w-full h-10 px-3 rounded-md bg-input/50 border border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)] text-foreground"
-                >
-                  {getIpOptions(selectedBrand).map((ip) => (
-                    <option key={ip.value} value={ip.value}>
-                      {ip.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Port Number
-                </label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="65535"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="bg-input/50 border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)]"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  WhatsApp Number
-                </label>
-                <Input
-                  type="tel"
-                  placeholder="+923001234567"
-                  value={whatsappNumber}
-                  onChange={(e) => setWhatsappNumber(e.target.value)}
-                  className="bg-input/50 border-border/50 focus:border-primary transition-all duration-300 focus:shadow-[0_0_20px_hsl(var(--primary)/0.3)]"
-                />
-              </div>
-            </div>
-
-            {/* Status Display */}
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-secondary/5 to-accent/5 rounded-lg blur-xl" />
-              <div className="relative bg-muted/30 rounded-lg p-8 border border-border/50 overflow-hidden">
-                {/* Scan line animation */}
-                {status === "checking" && (
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent animate-scan-line" />
-                  </div>
-                )}
-                
-                <div className="flex flex-col items-center gap-4">
-                  {getStatusIcon(status)}
-                  
-                  <div className="text-center">
-                    <h3 className="text-2xl font-bold mb-2">
-                      {status === "idle" && "Select brand to check port"}
-                      {status === "checking" && "Scanning port..."}
-                      {status === "open" && "Port is OPEN"}
-                      {status === "closed" && "Port is CLOSED"}
-                    </h3>
-                    
-                    {status !== "idle" && selectedBrand && port && (
-                      <p className="text-muted-foreground">
-                        {selectedBrand} - {selectedIp}:{port} ({getIpType(selectedBrand, selectedIp)})
-                      </p>
-                    )}
-                  </div>
-
-                  {status !== "idle" && (
-                    <Badge 
-                      variant={getStatusColor(status) as any}
-                      className="px-4 py-1 text-sm font-semibold animate-pulse-soft"
-                    >
-                      {status.toUpperCase()}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
+        {/* WhatsApp Number Input */}
+        <Card className="max-w-md mx-auto p-4 bg-card/50 backdrop-blur-xl border border-border mb-8 animate-fade-in">
+          <div className="flex items-center gap-4">
+            <label className="text-sm font-medium text-foreground whitespace-nowrap">
+              WhatsApp Alerts:
+            </label>
+            <Input
+              type="tel"
+              placeholder="+923001234567"
+              value={whatsappNumber}
+              onChange={(e) => setWhatsappNumber(e.target.value)}
+              className="bg-input/50 border-border/50 focus:border-primary transition-all duration-300"
+            />
           </div>
         </Card>
 
-        {/* History */}
-        {history.length > 0 && (
-          <div className="max-w-2xl mx-auto animate-fade-in">
-            <h2 className="text-2xl font-bold mb-4 text-foreground flex items-center gap-2">
-              <Activity className="h-5 w-5 text-primary" />
-              Recent Checks
-            </h2>
-            <div className="grid gap-3">
-              {history.map((result, index) => (
-                <Card
-                  key={index}
-                  className="p-4 bg-card/30 backdrop-blur-sm border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_20px_hsl(var(--primary)/0.2)] animate-fade-in"
-                  style={{ animationDelay: `${index * 0.05}s` }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {result.status === "open" ? (
-                        <CheckCircle2 className="h-5 w-5 text-success" />
-                      ) : (
-                        <XCircle className="h-5 w-5 text-destructive" />
-                      )}
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {result.brand} - {result.host}:{result.port}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {result.timestamp.toLocaleTimeString()}
-                          {result.time_ms && ` • ${result.time_ms}ms`}
-                        </p>
+        {/* Status Table */}
+        <Card className="max-w-6xl mx-auto bg-card/50 backdrop-blur-xl border-2 border-border shadow-2xl animate-scale-in overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Brand</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Brain Net IP</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Live IP</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Brain Net IP Status</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Live IP Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {brandStatuses.map((brandStatus, index) => (
+                  <tr 
+                    key={brandStatus.brand}
+                    className="border-b border-border/50 hover:bg-muted/30 transition-colors animate-fade-in"
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                  >
+                    <td className="px-6 py-4 text-sm font-medium text-foreground">
+                      {brandStatus.brand}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {brandStatus.brainNetIp}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {brandStatus.liveIp}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        {getStatusIcon(brandStatus.brainNetStatus)}
+                        <span className={`text-sm font-medium ${
+                          brandStatus.brainNetStatus === "open" 
+                            ? "text-success" 
+                            : brandStatus.brainNetStatus === "closed" 
+                            ? "text-destructive" 
+                            : "text-muted-foreground"
+                        }`}>
+                          {brandStatus.brainNetStatus === "idle" ? "-" : brandStatus.brainNetStatus.toUpperCase()}
+                        </span>
                       </div>
-                    </div>
-                    <Badge 
-                      variant={result.status === "open" ? "success" : "destructive"}
-                      className="font-semibold"
-                    >
-                      {result.status.toUpperCase()}
-                    </Badge>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        {getStatusIcon(brandStatus.liveIpStatus)}
+                        <span className={`text-sm font-medium ${
+                          brandStatus.liveIpStatus === "open" 
+                            ? "text-success" 
+                            : brandStatus.liveIpStatus === "closed" 
+                            ? "text-destructive" 
+                            : "text-muted-foreground"
+                        }`}>
+                          {brandStatus.liveIpStatus === "idle" ? "-" : brandStatus.liveIpStatus.toUpperCase()}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
+        </Card>
       </div>
     </div>
   );
