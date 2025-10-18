@@ -23,6 +23,7 @@ const BRANDS: Record<string, { host: string; default_port: number; brain_net_ip:
   "Chineyere": { host: "chny.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.28", live_ip: "202.59.94.88" },
   "Mini Minor": { host: "mmnr.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.29", live_ip: "202.59.94.87" },
   "Rangja": { host: "rnja.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.30", live_ip: "202.59.94.91" },
+  "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000, brain_net_ip: "", live_ip: "202.59.94.93" },
 };
 
 export const PortChecker = () => {
@@ -108,8 +109,10 @@ export const PortChecker = () => {
           : b
       ));
 
-      // Check Brain Net IP
-      const brainNetResult = await checkPort(brand, brandConfig.brain_net_ip);
+      // Check Brain Net IP (skip if empty)
+      const brainNetResult = brandConfig.brain_net_ip 
+        ? await checkPort(brand, brandConfig.brain_net_ip)
+        : "idle";
       
       // Check Live IP
       const liveIpResult = await checkPort(brand, brandConfig.live_ip);
@@ -227,14 +230,14 @@ export const PortChecker = () => {
                       {brandStatus.brand}
                     </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">
-                      {brandStatus.brainNetIp}
+                      {brandStatus.brainNetIp || "-"}
                     </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">
                       {brandStatus.liveIp}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
-                        {getStatusIcon(brandStatus.brainNetStatus)}
+                        {brandStatus.brainNetIp && getStatusIcon(brandStatus.brainNetStatus)}
                         <span className={`text-sm font-medium ${
                           brandStatus.brainNetStatus === "open" 
                             ? "text-success" 
@@ -242,7 +245,7 @@ export const PortChecker = () => {
                             ? "text-destructive" 
                             : "text-muted-foreground"
                         }`}>
-                          {brandStatus.brainNetStatus === "idle" ? "-" : brandStatus.brainNetStatus.toUpperCase()}
+                          {!brandStatus.brainNetIp || brandStatus.brainNetStatus === "idle" ? "-" : brandStatus.brainNetStatus.toUpperCase()}
                         </span>
                       </div>
                     </td>
