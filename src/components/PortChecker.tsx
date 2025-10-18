@@ -26,6 +26,10 @@ const BRANDS: Record<string, { host: string; default_port: number; brain_net_ip:
   "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000, brain_net_ip: "", live_ip: "202.59.94.93" },
 };
 
+interface ClosedCount {
+  [key: string]: number; // key format: "brand-ipType" (e.g., "Bareeze-brainNet")
+}
+
 export const PortChecker = () => {
   const [brandStatuses, setBrandStatuses] = useState<BrandStatus[]>(
     Object.keys(BRANDS).map(brand => ({
@@ -37,6 +41,8 @@ export const PortChecker = () => {
     }))
   );
   const [whatsappNumber, setWhatsappNumber] = useState<string>("");
+  const [closedCounts, setClosedCounts] = useState<ClosedCount>({});
+  const [alarmIntervals, setAlarmIntervals] = useState<{[key: string]: NodeJS.Timeout}>({});
 
   // Play alarm sound when port is closed
   const playAlarmSound = () => {
@@ -59,6 +65,61 @@ export const PortChecker = () => {
     
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.8);
+  };
+
+  // Play bigger continuous alarm sound for persistent failures
+  const playBigAlarmSound = () => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Create a louder, more urgent alarm sound
+    oscillator.type = 'square';
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+    oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.15);
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.3);
+    oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.45);
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.6);
+    oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.75);
+    
+    gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 1);
+  };
+
+  // Start continuous alarm for a specific brand/IP
+  const startContinuousAlarm = (key: string) => {
+    // Stop existing alarm if any
+    if (alarmIntervals[key]) {
+      clearInterval(alarmIntervals[key]);
+    }
+    
+    // Play alarm immediately
+    playBigAlarmSound();
+    
+    // Set up continuous alarm every 1.5 seconds
+    const intervalId = setInterval(() => {
+      playBigAlarmSound();
+    }, 1500);
+    
+    setAlarmIntervals(prev => ({ ...prev, [key]: intervalId }));
+  };
+
+  // Stop continuous alarm for a specific brand/IP
+  const stopContinuousAlarm = (key: string) => {
+    if (alarmIntervals[key]) {
+      clearInterval(alarmIntervals[key]);
+      setAlarmIntervals(prev => {
+        const newIntervals = { ...prev };
+        delete newIntervals[key];
+        return newIntervals;
+      });
+    }
   };
 
   // Send WhatsApp notification
@@ -128,17 +189,54 @@ export const PortChecker = () => {
           : b
       ));
 
-      // Send notifications and toasts for closed ports
+      // Handle Brain Net IP status changes
+      const brainNetKey = `${brand}-brainNet`;
       if (brainNetResult === "closed") {
-        playAlarmSound();
-        toast.error(`${brand} - Brain Net IP port is CLOSED`);
+        const newCount = (closedCounts[brainNetKey] || 0) + 1;
+        setClosedCounts(prev => ({ ...prev, [brainNetKey]: newCount }));
+        
+        if (newCount > 4) {
+          startContinuousAlarm(brainNetKey);
+          toast.error(`${brand} - Brain Net IP CRITICAL: Port closed ${newCount} times!`, { duration: 10000 });
+        } else {
+          playAlarmSound();
+          toast.error(`${brand} - Brain Net IP port is CLOSED (${newCount}/4)`);
+        }
         await sendWhatsAppNotification(brand, brandConfig.brain_net_ip, "Brain Net IP");
+      } else if (brainNetResult === "open") {
+        // Reset count and stop alarm when port opens
+        if (closedCounts[brainNetKey] && closedCounts[brainNetKey] > 0) {
+          setClosedCounts(prev => ({ ...prev, [brainNetKey]: 0 }));
+          stopContinuousAlarm(brainNetKey);
+          if (closedCounts[brainNetKey] > 4) {
+            toast.success(`${brand} - Brain Net IP recovered!`);
+          }
+        }
       }
       
+      // Handle Live IP status changes
+      const liveIpKey = `${brand}-liveIp`;
       if (liveIpResult === "closed") {
-        playAlarmSound();
-        toast.error(`${brand} - Live IP port is CLOSED`);
+        const newCount = (closedCounts[liveIpKey] || 0) + 1;
+        setClosedCounts(prev => ({ ...prev, [liveIpKey]: newCount }));
+        
+        if (newCount > 4) {
+          startContinuousAlarm(liveIpKey);
+          toast.error(`${brand} - Live IP CRITICAL: Port closed ${newCount} times!`, { duration: 10000 });
+        } else {
+          playAlarmSound();
+          toast.error(`${brand} - Live IP port is CLOSED (${newCount}/4)`);
+        }
         await sendWhatsAppNotification(brand, brandConfig.live_ip, "Live IP");
+      } else if (liveIpResult === "open") {
+        // Reset count and stop alarm when port opens
+        if (closedCounts[liveIpKey] && closedCounts[liveIpKey] > 0) {
+          setClosedCounts(prev => ({ ...prev, [liveIpKey]: 0 }));
+          stopContinuousAlarm(liveIpKey);
+          if (closedCounts[liveIpKey] > 4) {
+            toast.success(`${brand} - Live IP recovered!`);
+          }
+        }
       }
     }
   };
@@ -151,7 +249,11 @@ export const PortChecker = () => {
       checkAllPorts();
     }, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // Clean up all alarm intervals on unmount
+      Object.values(alarmIntervals).forEach(intervalId => clearInterval(intervalId));
+    };
   }, [whatsappNumber]);
 
   const getStatusIcon = (s: PortStatus) => {
