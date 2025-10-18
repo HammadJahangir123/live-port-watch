@@ -23,7 +23,6 @@ const BRANDS: Record<string, { host: string; default_port: number; brain_net_ip:
   "Chineyere": { host: "chny.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.28", live_ip: "202.59.94.88" },
   "Mini Minor": { host: "mmnr.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.29", live_ip: "202.59.94.87" },
   "Rangja": { host: "rnja.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.30", live_ip: "202.59.94.91" },
-  "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000, brain_net_ip: "122.129.92.32", live_ip: "202.59.94.93" },
 };
 
 export const PortChecker = () => {
@@ -267,6 +266,13 @@ export const PortChecker = () => {
             </table>
           </div>
         </Card>
+
+        {/* Footer */}
+        <footer className="text-center mt-12 pb-8">
+          <p className="text-muted-foreground text-sm">
+            Created by <span className="font-semibold text-foreground">Hammad Jahangir</span>
+          </p>
+        </footer>
       </div>
     </div>
   );
