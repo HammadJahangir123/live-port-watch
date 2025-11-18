@@ -44,52 +44,49 @@ export const PortChecker = () => {
   const [closedCounts, setClosedCounts] = useState<ClosedCount>({});
   const [alarmIntervals, setAlarmIntervals] = useState<{[key: string]: NodeJS.Timeout}>({});
 
-  // Play alarm sound when port is closed
-  const playAlarmSound = () => {
+  // Play powerful continuous alarm sound
+  const playPowerfulAlarmSound = () => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
+    const oscillator1 = audioContext.createOscillator();
+    const oscillator2 = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     
-    oscillator.connect(gainNode);
+    oscillator1.connect(gainNode);
+    oscillator2.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    // Create an alarm-like sound with rapid frequency changes
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.2);
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.4);
-    oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.6);
+    // Create a very loud, urgent dual-tone alarm sound
+    oscillator1.type = 'square';
+    oscillator2.type = 'sawtooth';
     
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8);
+    // First oscillator - main alarm
+    oscillator1.frequency.setValueAtTime(850, audioContext.currentTime);
+    oscillator1.frequency.setValueAtTime(1400, audioContext.currentTime + 0.12);
+    oscillator1.frequency.setValueAtTime(850, audioContext.currentTime + 0.24);
+    oscillator1.frequency.setValueAtTime(1400, audioContext.currentTime + 0.36);
+    oscillator1.frequency.setValueAtTime(850, audioContext.currentTime + 0.48);
+    oscillator1.frequency.setValueAtTime(1400, audioContext.currentTime + 0.6);
+    oscillator1.frequency.setValueAtTime(850, audioContext.currentTime + 0.72);
+    oscillator1.frequency.setValueAtTime(1400, audioContext.currentTime + 0.84);
     
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.8);
-  };
-
-  // Play bigger continuous alarm sound for persistent failures
-  const playBigAlarmSound = () => {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
+    // Second oscillator - harmony
+    oscillator2.frequency.setValueAtTime(950, audioContext.currentTime);
+    oscillator2.frequency.setValueAtTime(1500, audioContext.currentTime + 0.12);
+    oscillator2.frequency.setValueAtTime(950, audioContext.currentTime + 0.24);
+    oscillator2.frequency.setValueAtTime(1500, audioContext.currentTime + 0.36);
+    oscillator2.frequency.setValueAtTime(950, audioContext.currentTime + 0.48);
+    oscillator2.frequency.setValueAtTime(1500, audioContext.currentTime + 0.6);
+    oscillator2.frequency.setValueAtTime(950, audioContext.currentTime + 0.72);
+    oscillator2.frequency.setValueAtTime(1500, audioContext.currentTime + 0.84);
     
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    // Create a louder, more urgent alarm sound
-    oscillator.type = 'square';
-    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.15);
-    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.3);
-    oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.45);
-    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.6);
-    oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.75);
-    
-    gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+    // Very loud volume
+    gainNode.gain.setValueAtTime(0.7, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
     
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 1);
+    oscillator1.start(audioContext.currentTime);
+    oscillator2.start(audioContext.currentTime);
+    oscillator1.stop(audioContext.currentTime + 1);
+    oscillator2.stop(audioContext.currentTime + 1);
   };
 
   // Start continuous alarm for a specific brand/IP
@@ -100,12 +97,12 @@ export const PortChecker = () => {
     }
     
     // Play alarm immediately
-    playBigAlarmSound();
+    playPowerfulAlarmSound();
     
-    // Set up continuous alarm every 1.5 seconds
+    // Set up continuous alarm every 1.2 seconds for urgency
     const intervalId = setInterval(() => {
-      playBigAlarmSound();
-    }, 1500);
+      playPowerfulAlarmSound();
+    }, 1200);
     
     setAlarmIntervals(prev => ({ ...prev, [key]: intervalId }));
   };
@@ -195,22 +192,16 @@ export const PortChecker = () => {
         const newCount = (closedCounts[brainNetKey] || 0) + 1;
         setClosedCounts(prev => ({ ...prev, [brainNetKey]: newCount }));
         
-        if (newCount > 4) {
-          startContinuousAlarm(brainNetKey);
-          toast.error(`${brand} - Brain Net IP CRITICAL: Port closed ${newCount} times!`, { duration: 10000 });
-        } else {
-          playAlarmSound();
-          toast.error(`${brand} - Brain Net IP port is CLOSED (${newCount}/4)`);
-        }
+        // Start continuous alarm immediately
+        startContinuousAlarm(brainNetKey);
+        toast.error(`${brand} - Brain Net IP PORT CLOSED! (Check ${newCount})`, { duration: 10000 });
         await sendWhatsAppNotification(brand, brandConfig.brain_net_ip, "Brain Net IP");
       } else if (brainNetResult === "open") {
         // Reset count and stop alarm when port opens
         if (closedCounts[brainNetKey] && closedCounts[brainNetKey] > 0) {
           setClosedCounts(prev => ({ ...prev, [brainNetKey]: 0 }));
           stopContinuousAlarm(brainNetKey);
-          if (closedCounts[brainNetKey] > 4) {
-            toast.success(`${brand} - Brain Net IP recovered!`);
-          }
+          toast.success(`${brand} - Brain Net IP recovered!`);
         }
       }
       
@@ -220,22 +211,16 @@ export const PortChecker = () => {
         const newCount = (closedCounts[liveIpKey] || 0) + 1;
         setClosedCounts(prev => ({ ...prev, [liveIpKey]: newCount }));
         
-        if (newCount > 4) {
-          startContinuousAlarm(liveIpKey);
-          toast.error(`${brand} - Live IP CRITICAL: Port closed ${newCount} times!`, { duration: 10000 });
-        } else {
-          playAlarmSound();
-          toast.error(`${brand} - Live IP port is CLOSED (${newCount}/4)`);
-        }
+        // Start continuous alarm immediately
+        startContinuousAlarm(liveIpKey);
+        toast.error(`${brand} - Live IP PORT CLOSED! (Check ${newCount})`, { duration: 10000 });
         await sendWhatsAppNotification(brand, brandConfig.live_ip, "Live IP");
       } else if (liveIpResult === "open") {
         // Reset count and stop alarm when port opens
         if (closedCounts[liveIpKey] && closedCounts[liveIpKey] > 0) {
           setClosedCounts(prev => ({ ...prev, [liveIpKey]: 0 }));
           stopContinuousAlarm(liveIpKey);
-          if (closedCounts[liveIpKey] > 4) {
-            toast.success(`${brand} - Live IP recovered!`);
-          }
+          toast.success(`${brand} - Live IP recovered!`);
         }
       }
     }
