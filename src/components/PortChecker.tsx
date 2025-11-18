@@ -292,21 +292,6 @@ export const PortChecker = () => {
           </p>
         </div>
 
-        {/* WhatsApp Number Input */}
-        <Card className="max-w-md mx-auto p-4 bg-card/50 backdrop-blur-xl border border-border mb-8 animate-fade-in">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-foreground whitespace-nowrap">
-              WhatsApp Alerts:
-            </label>
-            <Input
-              type="tel"
-              placeholder="+923001234567"
-              value={whatsappNumber}
-              onChange={(e) => setWhatsappNumber(e.target.value)}
-              className="bg-input/50 border-border/50 focus:border-primary transition-all duration-300"
-            />
-          </div>
-        </Card>
 
         {/* Status Table */}
         <Card className="max-w-6xl mx-auto bg-card/50 backdrop-blur-xl border-2 border-border shadow-2xl animate-scale-in overflow-hidden">
