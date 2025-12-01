@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Loader2, Activity } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { CheckCircle2, XCircle, Loader2, Activity, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -43,32 +45,49 @@ export const PortChecker = () => {
   const [whatsappNumber, setWhatsappNumber] = useState<string>("");
   const [closedCounts, setClosedCounts] = useState<ClosedCount>({});
   const [alarmIntervals, setAlarmIntervals] = useState<{[key: string]: NodeJS.Timeout}>({});
+  const [volume, setVolume] = useState<number>(0.4);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
 
-  // Play Brain Net IP alarm sound (lower pitch, slower pattern)
+  // Play Brain Net IP alarm sound (lower pitch, pulsing pattern)
   const playBrainNetAlarmSound = () => {
+    if (isMuted) return;
+    
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
+    const oscillator1 = audioContext.createOscillator();
+    const oscillator2 = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     
-    oscillator.connect(gainNode);
+    oscillator1.connect(gainNode);
+    oscillator2.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    // Lower pitch alarm for Brain Net
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.2);
-    oscillator.frequency.setValueAtTime(400, audioContext.currentTime + 0.4);
+    // Deep warning tone for Brain Net
+    oscillator1.type = 'sine';
+    oscillator2.type = 'sine';
     
-    // Moderate volume
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.6);
+    // Create pulsing dual-tone effect
+    oscillator1.frequency.setValueAtTime(440, audioContext.currentTime);
+    oscillator1.frequency.setValueAtTime(330, audioContext.currentTime + 0.25);
+    oscillator1.frequency.setValueAtTime(440, audioContext.currentTime + 0.5);
     
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.6);
+    oscillator2.frequency.setValueAtTime(330, audioContext.currentTime);
+    oscillator2.frequency.setValueAtTime(440, audioContext.currentTime + 0.25);
+    oscillator2.frequency.setValueAtTime(330, audioContext.currentTime + 0.5);
+    
+    // Apply user-controlled volume
+    gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.7);
+    
+    oscillator1.start(audioContext.currentTime);
+    oscillator2.start(audioContext.currentTime);
+    oscillator1.stop(audioContext.currentTime + 0.7);
+    oscillator2.stop(audioContext.currentTime + 0.7);
   };
 
-  // Play Live IP alarm sound (higher pitch, faster pattern)
+  // Play Live IP alarm sound (urgent siren pattern)
   const playLiveIpAlarmSound = () => {
+    if (isMuted) return;
+    
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
@@ -76,18 +95,20 @@ export const PortChecker = () => {
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    // Higher pitch alarm for Live IP
-    oscillator.type = 'triangle';
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.15);
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.3);
+    // Urgent siren for Live IP
+    oscillator.type = 'sawtooth';
     
-    // Moderate volume
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.6);
+    // Rising and falling siren effect
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+    oscillator.frequency.linearRampToValueAtTime(1200, audioContext.currentTime + 0.3);
+    oscillator.frequency.linearRampToValueAtTime(600, audioContext.currentTime + 0.6);
+    
+    // Apply user-controlled volume
+    gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.7);
     
     oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.6);
+    oscillator.stop(audioContext.currentTime + 0.7);
   };
 
   // Start continuous alarm for a specific brand/IP
@@ -280,6 +301,39 @@ export const PortChecker = () => {
             Real-time port monitoring for all brands • Auto-refresh every 30 seconds
           </p>
         </div>
+
+        {/* Alarm Controls */}
+        <Card className="max-w-md mx-auto mb-8 p-6 bg-card/50 backdrop-blur-xl border-2 border-border shadow-xl animate-scale-in">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">Alarm Controls</h3>
+              <Button
+                variant={isMuted ? "destructive" : "default"}
+                size="sm"
+                onClick={() => setIsMuted(!isMuted)}
+                className="gap-2"
+              >
+                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                {isMuted ? "Unmute" : "Mute"}
+              </Button>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-muted-foreground">Volume</label>
+                <span className="text-sm font-semibold text-foreground">{Math.round(volume * 100)}%</span>
+              </div>
+              <Slider
+                value={[volume * 100]}
+                onValueChange={(value) => setVolume(value[0] / 100)}
+                max={100}
+                step={1}
+                className="w-full"
+                disabled={isMuted}
+              />
+            </div>
+          </div>
+        </Card>
 
 
         {/* Status Table */}
