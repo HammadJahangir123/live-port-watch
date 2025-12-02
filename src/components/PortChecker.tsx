@@ -1,10 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { CheckCircle2, XCircle, Loader2, Activity, Volume2, VolumeX } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -28,8 +24,12 @@ const BRANDS: Record<string, { host: string; default_port: number; brain_net_ip:
   "The Entertainer": { host: "te.eastgateindustries.com", default_port: 20000, brain_net_ip: "", live_ip: "202.59.94.93" },
 };
 
-interface ClosedCount {
-  [key: string]: number; // key format: "brand-ipType" (e.g., "Bareeze-brainNet")
+interface ClosedTimestamps {
+  [key: string]: number; // key format: "brand-ipType", value: timestamp when port first closed
+}
+
+interface EmailSent {
+  [key: string]: boolean; // Track if email was already sent for this closure
 }
 
 export const PortChecker = () => {
@@ -42,52 +42,12 @@ export const PortChecker = () => {
       liveIpStatus: "idle" as PortStatus,
     }))
   );
-  const [whatsappNumber, setWhatsappNumber] = useState<string>("");
-  const [closedCounts, setClosedCounts] = useState<ClosedCount>({});
   const [alarmIntervals, setAlarmIntervals] = useState<{[key: string]: NodeJS.Timeout}>({});
-  const [volume, setVolume] = useState<number>(0.4);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const closedTimestamps = useRef<ClosedTimestamps>({});
+  const emailSent = useRef<EmailSent>({});
 
-  // Play Brain Net IP alarm sound (lower pitch, pulsing pattern)
-  const playBrainNetAlarmSound = () => {
-    if (isMuted) return;
-    
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator1 = audioContext.createOscillator();
-    const oscillator2 = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator1.connect(gainNode);
-    oscillator2.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    // Deep warning tone for Brain Net
-    oscillator1.type = 'sine';
-    oscillator2.type = 'sine';
-    
-    // Create pulsing dual-tone effect
-    oscillator1.frequency.setValueAtTime(440, audioContext.currentTime);
-    oscillator1.frequency.setValueAtTime(330, audioContext.currentTime + 0.25);
-    oscillator1.frequency.setValueAtTime(440, audioContext.currentTime + 0.5);
-    
-    oscillator2.frequency.setValueAtTime(330, audioContext.currentTime);
-    oscillator2.frequency.setValueAtTime(440, audioContext.currentTime + 0.25);
-    oscillator2.frequency.setValueAtTime(330, audioContext.currentTime + 0.5);
-    
-    // Apply user-controlled volume
-    gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.7);
-    
-    oscillator1.start(audioContext.currentTime);
-    oscillator2.start(audioContext.currentTime);
-    oscillator1.stop(audioContext.currentTime + 0.7);
-    oscillator2.stop(audioContext.currentTime + 0.7);
-  };
-
-  // Play Live IP alarm sound (urgent siren pattern)
-  const playLiveIpAlarmSound = () => {
-    if (isMuted) return;
-    
+  // Simple notification beep sound
+  const playSimpleBeep = () => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
@@ -95,39 +55,27 @@ export const PortChecker = () => {
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    // Urgent siren for Live IP
-    oscillator.type = 'sawtooth';
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
     
-    // Rising and falling siren effect
-    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
-    oscillator.frequency.linearRampToValueAtTime(1200, audioContext.currentTime + 0.3);
-    oscillator.frequency.linearRampToValueAtTime(600, audioContext.currentTime + 0.6);
-    
-    // Apply user-controlled volume
-    gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.7);
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
     
     oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.7);
+    oscillator.stop(audioContext.currentTime + 0.3);
   };
 
   // Start continuous alarm for a specific brand/IP
-  const startContinuousAlarm = (key: string, alarmType: 'brainNet' | 'liveIp') => {
-    // Stop existing alarm if any
+  const startContinuousAlarm = (key: string) => {
     if (alarmIntervals[key]) {
       clearInterval(alarmIntervals[key]);
     }
     
-    // Select alarm sound based on type
-    const alarmSound = alarmType === 'brainNet' ? playBrainNetAlarmSound : playLiveIpAlarmSound;
+    playSimpleBeep();
     
-    // Play alarm immediately
-    alarmSound();
-    
-    // Set up continuous alarm every 2 seconds
     const intervalId = setInterval(() => {
-      alarmSound();
-    }, 2000);
+      playSimpleBeep();
+    }, 3000);
     
     setAlarmIntervals(prev => ({ ...prev, [key]: intervalId }));
   };
@@ -144,21 +92,15 @@ export const PortChecker = () => {
     }
   };
 
-  // Send WhatsApp notification
-  const sendWhatsAppNotification = async (brand: string, host: string, ipType: string) => {
-    if (!whatsappNumber) return;
-    
+  // Send email alert
+  const sendEmailAlert = async (brand: string, ip: string, ipType: string, closedSince: string) => {
     try {
-      await supabase.functions.invoke('send-whatsapp-alert', {
-        body: { 
-          phoneNumber: whatsappNumber,
-          brand,
-          host,
-          port: "20000"
-        }
+      await supabase.functions.invoke('send-email-alert', {
+        body: { brand, ip, ipType, closedSince }
       });
+      toast.info(`Email alert sent for ${brand} - ${ipType}`);
     } catch (error) {
-      console.error("WhatsApp notification error:", error);
+      console.error("Email alert error:", error);
     }
   };
 
@@ -214,17 +156,26 @@ export const PortChecker = () => {
       // Handle Brain Net IP status changes
       const brainNetKey = `${brand}-brainNet`;
       if (brainNetResult === "closed") {
-        const newCount = (closedCounts[brainNetKey] || 0) + 1;
-        setClosedCounts(prev => ({ ...prev, [brainNetKey]: newCount }));
+        // Track when port first closed
+        if (!closedTimestamps.current[brainNetKey]) {
+          closedTimestamps.current[brainNetKey] = Date.now();
+          emailSent.current[brainNetKey] = false;
+          startContinuousAlarm(brainNetKey);
+          toast.error(`${brand} - Brain Net IP PORT CLOSED!`, { duration: 10000 });
+        }
         
-        // Start continuous alarm immediately with Brain Net sound
-        startContinuousAlarm(brainNetKey, 'brainNet');
-        toast.error(`${brand} - Brain Net IP PORT CLOSED! (Check ${newCount})`, { duration: 10000 });
-        await sendWhatsAppNotification(brand, brandConfig.brain_net_ip, "Brain Net IP");
+        // Check if closed for more than 2 minutes and email not sent yet
+        const closedDuration = Date.now() - closedTimestamps.current[brainNetKey];
+        if (closedDuration >= 120000 && !emailSent.current[brainNetKey]) {
+          emailSent.current[brainNetKey] = true;
+          const closedSince = new Date(closedTimestamps.current[brainNetKey]).toLocaleString();
+          await sendEmailAlert(brand, brandConfig.brain_net_ip, "Brain Net IP", closedSince);
+        }
       } else if (brainNetResult === "open") {
-        // Reset count and stop alarm when port opens
-        if (closedCounts[brainNetKey] && closedCounts[brainNetKey] > 0) {
-          setClosedCounts(prev => ({ ...prev, [brainNetKey]: 0 }));
+        // Reset tracking when port opens
+        if (closedTimestamps.current[brainNetKey]) {
+          delete closedTimestamps.current[brainNetKey];
+          delete emailSent.current[brainNetKey];
           stopContinuousAlarm(brainNetKey);
           toast.success(`${brand} - Brain Net IP recovered!`);
         }
@@ -233,17 +184,26 @@ export const PortChecker = () => {
       // Handle Live IP status changes
       const liveIpKey = `${brand}-liveIp`;
       if (liveIpResult === "closed") {
-        const newCount = (closedCounts[liveIpKey] || 0) + 1;
-        setClosedCounts(prev => ({ ...prev, [liveIpKey]: newCount }));
+        // Track when port first closed
+        if (!closedTimestamps.current[liveIpKey]) {
+          closedTimestamps.current[liveIpKey] = Date.now();
+          emailSent.current[liveIpKey] = false;
+          startContinuousAlarm(liveIpKey);
+          toast.error(`${brand} - Live IP PORT CLOSED!`, { duration: 10000 });
+        }
         
-        // Start continuous alarm immediately with Live IP sound
-        startContinuousAlarm(liveIpKey, 'liveIp');
-        toast.error(`${brand} - Live IP PORT CLOSED! (Check ${newCount})`, { duration: 10000 });
-        await sendWhatsAppNotification(brand, brandConfig.live_ip, "Live IP");
+        // Check if closed for more than 2 minutes and email not sent yet
+        const closedDuration = Date.now() - closedTimestamps.current[liveIpKey];
+        if (closedDuration >= 120000 && !emailSent.current[liveIpKey]) {
+          emailSent.current[liveIpKey] = true;
+          const closedSince = new Date(closedTimestamps.current[liveIpKey]).toLocaleString();
+          await sendEmailAlert(brand, brandConfig.live_ip, "Live IP", closedSince);
+        }
       } else if (liveIpResult === "open") {
-        // Reset count and stop alarm when port opens
-        if (closedCounts[liveIpKey] && closedCounts[liveIpKey] > 0) {
-          setClosedCounts(prev => ({ ...prev, [liveIpKey]: 0 }));
+        // Reset tracking when port opens
+        if (closedTimestamps.current[liveIpKey]) {
+          delete closedTimestamps.current[liveIpKey];
+          delete emailSent.current[liveIpKey];
           stopContinuousAlarm(liveIpKey);
           toast.success(`${brand} - Live IP recovered!`);
         }
@@ -264,7 +224,7 @@ export const PortChecker = () => {
       // Clean up all alarm intervals on unmount
       Object.values(alarmIntervals).forEach(intervalId => clearInterval(intervalId));
     };
-  }, [whatsappNumber]);
+  }, []);
 
   const getStatusIcon = (s: PortStatus) => {
     switch (s) {
@@ -301,40 +261,6 @@ export const PortChecker = () => {
             Real-time port monitoring for all brands • Auto-refresh every 30 seconds
           </p>
         </div>
-
-        {/* Alarm Controls */}
-        <Card className="max-w-md mx-auto mb-8 p-6 bg-card/50 backdrop-blur-xl border-2 border-border shadow-xl animate-scale-in">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Alarm Controls</h3>
-              <Button
-                variant={isMuted ? "destructive" : "default"}
-                size="sm"
-                onClick={() => setIsMuted(!isMuted)}
-                className="gap-2"
-              >
-                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                {isMuted ? "Unmute" : "Mute"}
-              </Button>
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-muted-foreground">Volume</label>
-                <span className="text-sm font-semibold text-foreground">{Math.round(volume * 100)}%</span>
-              </div>
-              <Slider
-                value={[volume * 100]}
-                onValueChange={(value) => setVolume(value[0] / 100)}
-                max={100}
-                step={1}
-                className="w-full"
-                disabled={isMuted}
-              />
-            </div>
-          </div>
-        </Card>
-
 
         {/* Status Table */}
         <Card className="max-w-6xl mx-auto bg-card/50 backdrop-blur-xl border-2 border-border shadow-2xl animate-scale-in overflow-hidden">
