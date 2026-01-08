@@ -308,9 +308,7 @@ export const PortChecker = () => {
                   <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Brain Net IP</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Live IP</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Brain Net IP Status</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Brain Net Timestamp</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Live IP Status</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Live IP Timestamp</th>
                 </tr>
               </thead>
               <tbody>
@@ -343,17 +341,6 @@ export const PortChecker = () => {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="text-xs">
-                        {brandStatus.brainNetClosedAt && (
-                          <span className="text-destructive">Closed: {brandStatus.brainNetClosedAt}</span>
-                        )}
-                        {brandStatus.brainNetOpenedAt && (
-                          <span className="text-success">Opened: {brandStatus.brainNetOpenedAt}</span>
-                        )}
-                        {!brandStatus.brainNetClosedAt && !brandStatus.brainNetOpenedAt && "-"}
-                      </div>
-                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
                         {getStatusIcon(brandStatus.liveIpStatus)}
@@ -368,23 +355,78 @@ export const PortChecker = () => {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="text-xs">
-                        {brandStatus.liveIpClosedAt && (
-                          <span className="text-destructive">Closed: {brandStatus.liveIpClosedAt}</span>
-                        )}
-                        {brandStatus.liveIpOpenedAt && (
-                          <span className="text-success">Opened: {brandStatus.liveIpOpenedAt}</span>
-                        )}
-                        {!brandStatus.liveIpClosedAt && !brandStatus.liveIpOpenedAt && "-"}
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </Card>
+
+        {/* Port Status Events Section */}
+        {brandStatuses.some(b => b.brainNetClosedAt || b.brainNetOpenedAt || b.liveIpClosedAt || b.liveIpOpenedAt) && (
+          <Card className="max-w-6xl mx-auto mt-6 bg-card/50 backdrop-blur-xl border-2 border-border shadow-xl animate-fade-in overflow-hidden">
+            <div className="p-4">
+              <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                <Activity className="h-5 w-5 text-primary" />
+                Port Status Events
+              </h2>
+              <div className="grid gap-3">
+                {brandStatuses.map(brandStatus => (
+                  <div key={brandStatus.brand}>
+                    {/* Brain Net Closed */}
+                    {brandStatus.brainNetClosedAt && (
+                      <div className="flex items-center gap-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg mb-2">
+                        <XCircle className="h-5 w-5 text-destructive" />
+                        <div>
+                          <span className="font-semibold text-foreground">{brandStatus.brand}</span>
+                          <span className="text-muted-foreground"> - Brain Net IP ({brandStatus.brainNetIp})</span>
+                          <span className="text-destructive font-medium ml-2">CLOSED</span>
+                          <span className="text-muted-foreground text-sm ml-2">since {brandStatus.brainNetClosedAt}</span>
+                        </div>
+                      </div>
+                    )}
+                    {/* Brain Net Opened */}
+                    {brandStatus.brainNetOpenedAt && (
+                      <div className="flex items-center gap-3 p-3 bg-success/10 border border-success/30 rounded-lg mb-2">
+                        <CheckCircle2 className="h-5 w-5 text-success" />
+                        <div>
+                          <span className="font-semibold text-foreground">{brandStatus.brand}</span>
+                          <span className="text-muted-foreground"> - Brain Net IP ({brandStatus.brainNetIp})</span>
+                          <span className="text-success font-medium ml-2">OPENED</span>
+                          <span className="text-muted-foreground text-sm ml-2">at {brandStatus.brainNetOpenedAt}</span>
+                        </div>
+                      </div>
+                    )}
+                    {/* Live IP Closed */}
+                    {brandStatus.liveIpClosedAt && (
+                      <div className="flex items-center gap-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg mb-2">
+                        <XCircle className="h-5 w-5 text-destructive" />
+                        <div>
+                          <span className="font-semibold text-foreground">{brandStatus.brand}</span>
+                          <span className="text-muted-foreground"> - Live IP ({brandStatus.liveIp})</span>
+                          <span className="text-destructive font-medium ml-2">CLOSED</span>
+                          <span className="text-muted-foreground text-sm ml-2">since {brandStatus.liveIpClosedAt}</span>
+                        </div>
+                      </div>
+                    )}
+                    {/* Live IP Opened */}
+                    {brandStatus.liveIpOpenedAt && (
+                      <div className="flex items-center gap-3 p-3 bg-success/10 border border-success/30 rounded-lg mb-2">
+                        <CheckCircle2 className="h-5 w-5 text-success" />
+                        <div>
+                          <span className="font-semibold text-foreground">{brandStatus.brand}</span>
+                          <span className="text-muted-foreground"> - Live IP ({brandStatus.liveIp})</span>
+                          <span className="text-success font-medium ml-2">OPENED</span>
+                          <span className="text-muted-foreground text-sm ml-2">at {brandStatus.liveIpOpenedAt}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Footer */}
         <footer className="text-center mt-12 pb-8">
