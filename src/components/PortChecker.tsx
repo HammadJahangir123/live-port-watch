@@ -184,11 +184,13 @@ export const PortChecker = () => {
           await sendEmailAlert(brand, brandConfig.brain_net_ip, "Brain Net IP", closedSince);
         }
       } else if (brainNetResult === "open") {
+        // IMMEDIATELY stop alarm when port opens
+        stopContinuousAlarm(brainNetKey);
+        
         // Reset tracking when port opens
         if (closedTimestamps.current[brainNetKey]) {
           delete closedTimestamps.current[brainNetKey];
           delete emailSent.current[brainNetKey];
-          stopContinuousAlarm(brainNetKey);
           toast.success(`${brand} - Brain Net IP recovered!`);
           
           // Update opened timestamp in UI
@@ -228,11 +230,13 @@ export const PortChecker = () => {
           await sendEmailAlert(brand, brandConfig.live_ip, "Live IP", closedSince);
         }
       } else if (liveIpResult === "open") {
+        // IMMEDIATELY stop alarm when port opens
+        stopContinuousAlarm(liveIpKey);
+        
         // Reset tracking when port opens
         if (closedTimestamps.current[liveIpKey]) {
           delete closedTimestamps.current[liveIpKey];
           delete emailSent.current[liveIpKey];
-          stopContinuousAlarm(liveIpKey);
           toast.success(`${brand} - Live IP recovered!`);
           
           // Update opened timestamp in UI
