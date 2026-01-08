@@ -12,6 +12,10 @@ interface BrandStatus {
   liveIp: string;
   brainNetStatus: PortStatus;
   liveIpStatus: PortStatus;
+  brainNetClosedAt?: string;
+  brainNetOpenedAt?: string;
+  liveIpClosedAt?: string;
+  liveIpOpenedAt?: string;
 }
 
 // EastGate brands configuration
@@ -162,6 +166,14 @@ export const PortChecker = () => {
           emailSent.current[brainNetKey] = false;
           startContinuousAlarm(brainNetKey);
           toast.error(`${brand} - Brain Net IP PORT CLOSED!`, { duration: 10000 });
+          
+          // Update closed timestamp in UI
+          const closedTime = new Date().toLocaleString();
+          setBrandStatuses(prev => prev.map(b => 
+            b.brand === brand 
+              ? { ...b, brainNetClosedAt: closedTime, brainNetOpenedAt: undefined }
+              : b
+          ));
         }
         
         // Check if closed for more than 2 minutes and email not sent yet
@@ -178,6 +190,14 @@ export const PortChecker = () => {
           delete emailSent.current[brainNetKey];
           stopContinuousAlarm(brainNetKey);
           toast.success(`${brand} - Brain Net IP recovered!`);
+          
+          // Update opened timestamp in UI
+          const openedTime = new Date().toLocaleString();
+          setBrandStatuses(prev => prev.map(b => 
+            b.brand === brand 
+              ? { ...b, brainNetOpenedAt: openedTime, brainNetClosedAt: undefined }
+              : b
+          ));
         }
       }
       
@@ -190,6 +210,14 @@ export const PortChecker = () => {
           emailSent.current[liveIpKey] = false;
           startContinuousAlarm(liveIpKey);
           toast.error(`${brand} - Live IP PORT CLOSED!`, { duration: 10000 });
+          
+          // Update closed timestamp in UI
+          const closedTime = new Date().toLocaleString();
+          setBrandStatuses(prev => prev.map(b => 
+            b.brand === brand 
+              ? { ...b, liveIpClosedAt: closedTime, liveIpOpenedAt: undefined }
+              : b
+          ));
         }
         
         // Check if closed for more than 2 minutes and email not sent yet
@@ -206,6 +234,14 @@ export const PortChecker = () => {
           delete emailSent.current[liveIpKey];
           stopContinuousAlarm(liveIpKey);
           toast.success(`${brand} - Live IP recovered!`);
+          
+          // Update opened timestamp in UI
+          const openedTime = new Date().toLocaleString();
+          setBrandStatuses(prev => prev.map(b => 
+            b.brand === brand 
+              ? { ...b, liveIpOpenedAt: openedTime, liveIpClosedAt: undefined }
+              : b
+          ));
         }
       }
     }
@@ -272,7 +308,9 @@ export const PortChecker = () => {
                   <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Brain Net IP</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Live IP</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Brain Net IP Status</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Brain Net Timestamp</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Live IP Status</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-foreground">Live IP Timestamp</th>
                 </tr>
               </thead>
               <tbody>
@@ -305,6 +343,17 @@ export const PortChecker = () => {
                         </span>
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="text-xs">
+                        {brandStatus.brainNetClosedAt && (
+                          <span className="text-destructive">Closed: {brandStatus.brainNetClosedAt}</span>
+                        )}
+                        {brandStatus.brainNetOpenedAt && (
+                          <span className="text-success">Opened: {brandStatus.brainNetOpenedAt}</span>
+                        )}
+                        {!brandStatus.brainNetClosedAt && !brandStatus.brainNetOpenedAt && "-"}
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
                         {getStatusIcon(brandStatus.liveIpStatus)}
@@ -317,6 +366,17 @@ export const PortChecker = () => {
                         }`}>
                           {brandStatus.liveIpStatus === "idle" ? "-" : brandStatus.liveIpStatus.toUpperCase()}
                         </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="text-xs">
+                        {brandStatus.liveIpClosedAt && (
+                          <span className="text-destructive">Closed: {brandStatus.liveIpClosedAt}</span>
+                        )}
+                        {brandStatus.liveIpOpenedAt && (
+                          <span className="text-success">Opened: {brandStatus.liveIpOpenedAt}</span>
+                        )}
+                        {!brandStatus.liveIpClosedAt && !brandStatus.liveIpOpenedAt && "-"}
                       </div>
                     </td>
                   </tr>
