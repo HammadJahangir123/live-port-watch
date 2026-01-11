@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
-import { CheckCircle2, XCircle, Loader2, Activity } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, XCircle, Loader2, Activity, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-
 type PortStatus = "checking" | "open" | "closed" | "idle";
 
 interface BrandStatus {
@@ -47,6 +47,7 @@ export const PortChecker = () => {
     }))
   );
   const [alarmIntervals, setAlarmIntervals] = useState<{[key: string]: NodeJS.Timeout}>({});
+  const [isAlarmActive, setIsAlarmActive] = useState(false);
   const closedTimestamps = useRef<ClosedTimestamps>({});
   const emailSent = useRef<EmailSent>({});
 
@@ -76,6 +77,7 @@ export const PortChecker = () => {
     }
     
     playSimpleBeep();
+    setIsAlarmActive(true);
     
     const intervalId = setInterval(() => {
       playSimpleBeep();
@@ -91,9 +93,23 @@ export const PortChecker = () => {
       setAlarmIntervals(prev => {
         const newIntervals = { ...prev };
         delete newIntervals[key];
+        // Check if any alarms are still active
+        if (Object.keys(newIntervals).length === 0) {
+          setIsAlarmActive(false);
+        }
         return newIntervals;
       });
     }
+  };
+
+  // Stop all alarms manually
+  const stopAllAlarms = () => {
+    Object.keys(alarmIntervals).forEach(key => {
+      clearInterval(alarmIntervals[key]);
+    });
+    setAlarmIntervals({});
+    setIsAlarmActive(false);
+    toast.success("All alarms stopped manually");
   };
 
   // Send email alert
@@ -300,6 +316,19 @@ export const PortChecker = () => {
           <p className="text-muted-foreground text-lg">
             Real-time port monitoring for all brands • Auto-refresh every 30 seconds
           </p>
+          
+          {/* Stop Alarm Button */}
+          {isAlarmActive && (
+            <Button
+              onClick={stopAllAlarms}
+              variant="destructive"
+              size="lg"
+              className="mt-4 gap-2 animate-pulse"
+            >
+              <VolumeX className="h-5 w-5" />
+              Stop Alarm
+            </Button>
+          )}
         </div>
 
         {/* Status Table */}
